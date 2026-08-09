@@ -30,7 +30,9 @@
           <span class="status-dot status-dot-green" id="system-status-dot"></span>
           <span id="system-status-text">System Armed · Safe</span>
         </span>
-        <button id="sim-crash-btn" class="btn btn-emergency btn-sm">⚡ Simulate Crash</button>
+        <select id="device-selector" class="form-input btn-sm" style="background:var(--bg); border-color:var(--border); width:auto; padding:4px 8px; font-size:0.875rem; color:var(--text); cursor:pointer;">
+          <option value="">Loading devices...</option>
+        </select>
         <a href="#" id="logout-btn" class="btn btn-ghost btn-sm" style="color:var(--text-secondary);">Logout</a>
       </div>
     </div>
@@ -66,7 +68,7 @@
          1. RIDER DASHBOARD VIEW
          ============================================================ -->
     <div class="dash-view active" id="rider-view">
-      
+
       <!-- Action Buttons Row -->
       <div class="dash-actions-row">
         <button class="btn btn-ghost btn-sm btn-pill">📞 Call Rider</button>
@@ -150,7 +152,7 @@
 
         <!-- Right Vertical Cards -->
         <div class="dash-grid-vertical">
-          
+
           <!-- AI SAFETY ASSISTANT -->
           <div class="card">
             <div class="card-header">
@@ -211,7 +213,7 @@
             <div class="card-header">
               <span class="card-title">DEVICE & RIDER HEALTH</span>
             </div>
-            
+
             <div class="health-overview" style="margin-top:16px;">
               <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
                 <span style="font-size:0.875rem;">Safety Score</span>
@@ -252,7 +254,7 @@
 
       <!-- Bottom Section: 3 Columns -->
       <div class="dash-grid-3" style="margin-top:20px;">
-        
+
         <!-- TODAY'S RIDE ANALYTICS -->
         <div class="card">
           <div class="card-header">
@@ -310,25 +312,26 @@
         <!-- BLACK BOX RECORDER -->
         <div class="card">
           <div class="card-header">
-            <span class="card-title" style="display:flex; align-items:center; gap:8px;"><span style="display:inline-block; width:10px; height:10px; background:#333; border-radius:2px;"></span> BLACK BOX RECORDER</span>
-            <span style="font-size:0.7rem; color:var(--accent);">● Recording</span>
-          </div>
-          
-          <div style="display:flex; justify-content:space-between; margin-top:16px; margin-bottom:20px;">
-            <div>
-              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Storage</div>
-              <strong style="font-size:1.1rem;">82% Free</strong>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Last Sync</div>
-              <strong style="font-size:1.1rem; color:var(--accent);">5 sec ago</strong>
-            </div>
+            <span class="card-title" style="display:flex; align-items:center; gap:8px;">
+              <span style="display:inline-block; width:10px; height:10px; background:var(--primary); border-radius:2px;"></span> DEVICE CONTROLS
+            </span>
+            <span id="cmd-status-badge" style="font-size:0.7rem; color:var(--text-muted);">● Ready</span>
           </div>
 
-          <div style="display:flex; flex-direction:column; gap:12px;">
-            <button class="btn btn-ghost" style="border:1px solid var(--border-light); width:100%; justify-content:center; background:#f8f9fa;">📊 Download Logs</button>
-            <button class="btn btn-ghost" style="border:1px solid var(--border-light); width:100%; justify-content:center; background:#f8f9fa;">📉 Download Sensor Data</button>
-            <button class="btn btn-outline" style="width:100%; justify-content:center; border-color:var(--primary); color:var(--primary);">▶ Replay Accident</button>
+          <div id="command-feedback" style="margin-top:12px; font-size:0.8rem; padding:8px; border-radius:4px; display:none; background:var(--bg); border:1px solid var(--border-light);"></div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:16px;">
+            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="buzzer_on">Buzzer ON</button>
+            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="buzzer_off">Buzzer OFF</button>
+            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="led_red">LED Red</button>
+            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="led_green">LED Green</button>
+            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="led_off">LED OFF</button>
+            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="upload_snapshot">Snapshot</button>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:8px; margin-top:16px;">
+            <button class="btn btn-emergency btn-sm cmd-btn" data-cmd="sos_on" style="justify-content:center;">🚨 Trigger SOS Alarm</button>
+            <button class="btn btn-secondary btn-sm cmd-btn" data-cmd="sos_off" style="justify-content:center;">Stop SOS Alarm</button>
           </div>
         </div>
 
@@ -508,15 +511,21 @@
 
         <!-- Video & Photo Evidence -->
         <div class="dash-col-4">
-          <div class="card">
-            <span class="card-title">Recorded Evidence</span>
-            <div style="margin-top:16px; border-radius:var(--radius); overflow:hidden; background:#000;">
-              <video src="No_I_have_given_the_screensho.mp4" controls
-                style="width:100%; height:180px; object-fit:cover;"></video>
+          <div class="card" id="camera-card">
+            <div class="card-header">
+              <span class="card-title">Live Camera Feed</span>
+              <span id="cam-status-badge" class="status-badge" style="background:var(--bg); border:1px solid var(--border); color:var(--text-secondary);">Unknown</span>
             </div>
-            <div style="margin-top:12px; font-size:0.8rem; color:var(--text-secondary);">
-              <strong>Video Clip:</strong> 10s pre-impact to 15s post-impact.<br />
-              <strong>File Hash:</strong> <code>0x8f2a99c1e4d7</code> (Tamper-proof)
+            <div id="camera-container" style="margin-top:16px; border-radius:var(--radius); overflow:hidden; background:#000; position:relative; min-height: 180px; display:flex; align-items:center; justify-content:center;">
+              <span id="camera-loading-text" style="color:#64748b; font-size:0.875rem;">Select device to load camera...</span>
+              <img id="camera-snapshot" src="" style="width:100%; height:auto; object-fit:contain; display:none;" alt="Camera Snapshot"/>
+              <video id="camera-stream" autoplay muted playsinline controls style="width:100%; height:180px; object-fit:cover; display:none;"></video>
+            </div>
+            <div style="margin-top:12px; font-size:0.8rem; color:var(--text-secondary); display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <strong>Last Updated:</strong> <span id="cam-last-update">Never</span>
+              </div>
+              <button id="refresh-camera-btn" class="btn btn-ghost btn-sm" style="padding:4px 8px;">🔄 Refresh</button>
             </div>
           </div>
 
