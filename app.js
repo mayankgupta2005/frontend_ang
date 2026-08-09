@@ -584,17 +584,26 @@ const BlackBox = (() => {
       const camStatus = document.getElementById('cam-status-badge');
       const lastUpdate = document.getElementById('cam-last-update');
 
+      if (statusText) {
+        statusText.style.display = 'block';
+        statusText.textContent = 'Fetching camera metadata...';
+      }
+
       try {
         const res = await fetch(`${API_URL}/camera/${currentDeviceId}/metadata`, { headers: getAuthHeaders() });
+        if (handleUnauthorized(res)) return;
+
         if (!res.ok) {
            if (res.status === 404) {
-             throw new Error("No camera metadata found");
+             throw new Error("No camera metadata available for this device");
            }
-           throw new Error("Failed to fetch camera metadata");
+           if (res.status === 403) {
+             throw new Error("Permission denied to access camera metadata");
+           }
+           throw new Error(`Failed to fetch camera metadata (${res.status})`);
         }
 
         const data = await res.json();
-        if (statusText) statusText.style.display = 'none';
 
         if (data.status === 'online' || data.is_online) {
            if (camStatus) {
@@ -615,34 +624,49 @@ const BlackBox = (() => {
            lastUpdate.textContent = d.toLocaleTimeString();
         }
 
-        if (data.stream_url) {
+        // Handle stream vs snapshot vs fallback
+        if (data.stream_url && (data.stream_url.endsWith('.mp4') || data.stream_url.startsWith('http'))) {
            if (snapshot) snapshot.style.display = 'none';
+           if (statusText) statusText.style.display = 'none';
            if (stream) {
              stream.style.display = 'block';
              if (stream.src !== data.stream_url) stream.src = data.stream_url;
            }
-        } else if (data.snapshot_url) {
+        } else if (data.snapshot_url && data.snapshot_url.trim() !== '') {
            if (stream) stream.style.display = 'none';
            if (snapshot) {
-             snapshot.style.display = 'block';
+             snapshot.onerror = () => {
+               snapshot.style.display = 'none';
+               if (statusText) {
+                 statusText.style.display = 'block';
+                 statusText.textContent = "Snapshot image failed to load";
+               }
+             };
+             snapshot.onload = () => {
+               if (statusText) statusText.style.display = 'none';
+               snapshot.style.display = 'block';
+             };
              snapshot.src = data.snapshot_url;
            }
         } else {
+           if (stream) stream.style.display = 'none';
+           if (snapshot) snapshot.style.display = 'none';
            if (statusText) {
              statusText.style.display = 'block';
-             statusText.textContent = "Camera online but no feed/snapshot URL available";
+             statusText.textContent = "No camera snapshot available";
            }
         }
       } catch (err) {
+        if (snapshot) snapshot.style.display = 'none';
+        if (stream) stream.style.display = 'none';
         if (statusText) {
           statusText.style.display = 'block';
           statusText.textContent = err.message;
         }
-        if (snapshot) snapshot.style.display = 'none';
-        if (stream) stream.style.display = 'none';
         if (camStatus) {
-           camStatus.textContent = '○ Error';
-           camStatus.style.color = 'var(--emergency)';
+           camStatus.textContent = '○ Unavailable';
+           camStatus.style.color = 'var(--text-secondary)';
+           camStatus.style.borderColor = 'var(--border)';
         }
       }
     }
