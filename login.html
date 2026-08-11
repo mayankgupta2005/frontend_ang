@@ -103,6 +103,23 @@
 
         if (!response.ok) {
           const errorData = await response.json();
+          
+          if (response.status === 403 && (errorData.detail || '').toLowerCase().includes('pending')) {
+            // Show Pending Approval UI
+            document.querySelector('.auth-card').innerHTML = `
+              <div style="text-align:center; padding: 20px 0;">
+                <div style="font-size: 3rem; margin-bottom: 1rem;">⏳</div>
+                <h2 style="margin-bottom: 12px; color: var(--warning, #fbbf24);">Approval Pending</h2>
+                <p style="color: var(--text-secondary); line-height: 1.5; margin-bottom: 24px;">
+                  Your account has been created successfully, but it requires administrator approval before you can log in. 
+                  We will notify you once your account is active.
+                </p>
+                <a href="index.html" class="btn btn-primary" style="display:inline-block; text-decoration:none;">Return to Home</a>
+              </div>
+            `;
+            return;
+          }
+
           throw new Error(errorData.detail || 'Login failed.');
         }
 

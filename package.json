@@ -1,6 +1,7 @@
 {
   "name": "novashield-frontend",
   "version": "1.0.0",
+  "type": "module",
   "description": "NovaShield Emergency Response Frontend",
   "scripts": {
     "dev": "vite",
@@ -8,6 +9,20 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^4.3.3",
     "vite": "^5.2.0"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.31.0",
+    "react": "^19.2.8",
+    "react-countup": "^6.5.3",
+    "react-dom": "^19.2.8",
+    "react-leaflet": "^5.0.0",
+    "recharts": "^3.10.1"
   }
 }

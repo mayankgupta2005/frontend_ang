@@ -22,6 +22,8 @@ export function saveAuthData(data) {
   localStorage.setItem('ns_token', data.access_token);
   localStorage.setItem('ns_user_id', data.user_id);
   localStorage.setItem('ns_user_name', data.name);
+  if (data.role) localStorage.setItem('ns_role', data.role);
+  if (data.status) localStorage.setItem('ns_status', data.status);
 }
 
 export function clearAuthData() {
@@ -32,6 +34,14 @@ export function clearAuthData() {
 
 export function getUserId() {
   return localStorage.getItem('ns_user_id');
+}
+
+export function getUserRole() {
+  return localStorage.getItem('ns_role') || 'RIDER';
+}
+
+export function getUserStatus() {
+  return localStorage.getItem('ns_status') || 'ACTIVE';
 }
 
 /**

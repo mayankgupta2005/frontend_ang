@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0a0e14;
+  --color-background-secondary: #111827;
+  --color-primary: #22d3ee;
+  --color-primary-dark: #0891b2;
+  --color-safe: #10b981;
+  --color-warning: #fbbf24;
+  --color-emergency: #ef4444;
+  --color-investigation: #d946ef;
+
+  --font-sans: "Inter", "system-ui", "sans-serif";
+  --font-mono: "JetBrains Mono", "monospace";
+
+  --animate-pulse-fast: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-pulse-dot: pulse-dot 2s infinite;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-white font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-[#0f172a]/65 backdrop-blur-md border border-white/10 shadow-lg rounded-2xl;
+  }
+  .glass-panel-solid {
+    @apply bg-[#0f172a] border border-white/10 shadow-lg rounded-2xl;
+  }
+  .glass-panel-hover {
+    @apply hover:bg-[#1e293b]/75 transition-colors;
+  }
+}

@@ -1,0 +1,977 @@
+diff --git a/app.js b/app.js
+index 2e9cccf..9dce69f 100644
+--- a/app.js
++++ b/app.js
+@@ -7,6 +7,9 @@ import { API_URL, WS_BASE_URL, getAuthHeaders, getUserId, clearAuthData, handleU
+ const BlackBox = (() => {
+   const activeAnimations = {};
+   let currentUser = null;
++  let currentDeviceId = null;
++  let wsConnection = null;
++  let cameraPollTimer = null;
+ 
+   /* ---- API Helpers ---- */
+   async function loadRider() {
+@@ -19,7 +22,6 @@ const BlackBox = (() => {
+       if (handleUnauthorized(res)) return null;
+       if (res.ok) {
+         const d = await res.json();
+-        // Map backend MedicalProfile to frontend object format
+         return {
+           name: d.full_name || 'Rider',
+           age: d.dob || '27',
+@@ -62,7 +64,6 @@ const BlackBox = (() => {
+         const targetView = document.getElementById(targetViewId);
+         if (targetView) targetView.classList.add('active');
+ 
+-        // Resize maps when switching tabs so Leaflet renders correctly
+         setTimeout(() => {
+           if (riderMap) riderMap.invalidateSize();
+           if (parentMap) parentMap.invalidateSize();
+@@ -72,7 +73,7 @@ const BlackBox = (() => {
+     });
+ 
+     /* ---- Live telemetry state ---- */
+-    const live = { speed: 0, lean: 0, g: 0.0, batt: 87 };
++    const live = { speed: 0, lean: 0, g: 0.0, batt: 0 };
+ 
+     function setLive() {
+       const speedEl = document.getElementById('live-speed');
+@@ -88,7 +89,7 @@ const BlackBox = (() => {
+       if (battBarEl) battBarEl.style.width = live.batt + '%';
+     }
+ 
+-    /* ---- Crash & Emergency Simulation State ---- */
++    /* ---- Crash & Emergency State ---- */
+     let isCrashed = false;
+     let crashTimer = null;
+     let countdownVal = 10;
+@@ -96,19 +97,12 @@ const BlackBox = (() => {
+     /* Maps */
+     let riderMap = null, parentMap = null, policeMap = null;
+     let riderMarker = null, parentMarker = null, policeMarker = null;
+-    const startPos = { lat: 29.3909, lng: 76.9635 };
+-    let currentPos = { ...startPos };
++    let currentPos = { lat: 0, lng: 0 };
++    let hasValidLocation = false;
+ 
+     /* Logs */
+     const logEl = document.getElementById('event-log');
+-    const SEED_LOGS = [
+-      { t: '14:02:11', m: 'GPS lock acquired · ±2.1m accuracy', type: 'info' },
+-      { t: '14:01:58', m: 'IMU 6-axis calibration normal', type: 'info' },
+-      { t: '14:01:32', m: 'Hard braking event logged', type: 'warning' },
+-      { t: '14:00:47', m: 'GSM SIM800L connection online', type: 'info' },
+-      { t: '14:00:12', m: 'Ride started · BlackBox armed', type: 'info' },
+-    ];
+-    let logs = [...SEED_LOGS];
++    let logs = [];
+ 
+     function renderLog(list) {
+       if (!logEl) return;
+@@ -124,28 +118,21 @@ const BlackBox = (() => {
+         logEl.appendChild(div);
+       });
+     }
+-    renderLog(logs);
+ 
+     /* ---- Crash Trigger (Emergency Mode) ---- */
+     const overlay = document.getElementById('crash-overlay');
+     const countdownEl = document.getElementById('crash-countdown');
+-    const simBtn = document.getElementById('sim-crash-btn');
+     const cancelSosBtn = document.getElementById('cancel-sos-btn');
+ 
+-    let wsConnection = null;
+-
+     function triggerCrashAlert() {
++      if (isCrashed) return;
+       isCrashed = 'alerting';
+-      live.speed = 0; live.lean = 85; live.g = 5.4;
+-      setLive();
+ 
+-      // Update System Badge
+       const sysStatusDot = document.getElementById('system-status-dot');
+       const sysStatusText = document.getElementById('system-status-text');
+       if (sysStatusDot) sysStatusDot.className = 'status-dot status-dot-red';
+-      if (sysStatusText) sysStatusText.textContent = '⚠ ACCIDENT DETECTED · ALERTING';
++      if (sysStatusText) sysStatusText.textContent = '⚠ ACCIDENT DETECTED · EMERGENCY MODE';
+ 
+-      // Update Parent Dashboard Status Card
+       const parentCard = document.getElementById('parent-status-card');
+       const parentIcon = document.getElementById('parent-status-icon');
+       const parentText = document.getElementById('parent-status-text');
+@@ -153,47 +140,27 @@ const BlackBox = (() => {
+       if (parentCard) { parentCard.className = 'parent-status-card alert'; }
+       if (parentIcon) parentIcon.textContent = '🚨';
+       if (parentText) parentText.textContent = 'ACCIDENT DETECTED!';
+-      if (parentSub) parentSub.textContent = 'Impact force 5.4G detected. Emergency services notified.';
++      if (parentSub) parentSub.textContent = 'Emergency services notified.';
+ 
+-      // Update Timeline Dots
+       const tlCrashDot = document.getElementById('tl-crash-dot');
+       const tlCrashText = document.getElementById('tl-crash-text');
+       const tlSosDot = document.getElementById('tl-sos-dot');
+       const tlSosText = document.getElementById('tl-sos-text');
+-      const tlAmbDot = document.getElementById('tl-amb-dot');
+-      const tlAmbText = document.getElementById('tl-amb-text');
+ 
+       if (tlCrashDot) { tlCrashDot.className = 'timeline-dot emergency'; }
+-      if (tlCrashText) tlCrashText.textContent = 'Impact 5.4G at 14:02:11';
++      if (tlCrashText) tlCrashText.textContent = 'Impact logged';
+       if (tlSosDot) { tlSosDot.className = 'timeline-dot active'; }
+       if (tlSosText) tlSosText.textContent = 'Dispatching SMS & Calls...';
+ 
+-      // Show Emergency Overlay
+       if (overlay) overlay.classList.add('show');
+ 
+       countdownVal = 10;
+       if (countdownEl) countdownEl.textContent = countdownVal;
+ 
+       const timeStr = new Date().toTimeString().slice(0, 8);
+-      logs = [{ t: timeStr, m: '⚠ CRASH DETECTED! High G-force impact logged.', type: 'alert' }, ...logs].slice(0, 10);
++      logs = [{ t: timeStr, m: '⚠ CRASH DETECTED by backend telemetry.', type: 'alert' }, ...logs].slice(0, 15);
+       renderLog(logs);
+ 
+-      // POST to backend Alerts
+-      fetch(`${API_URL}/alerts`, {
+-        method: 'POST',
+-        headers: getAuthHeaders(),
+-        body: JSON.stringify({
+-          device_id: 'device_001',
+-          event_type: 'crash_confirmed',
+-          message: 'High G-force impact logged',
+-          confidence: 0.95
+-        })
+-      }).catch(console.error);
+-
+-      if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+-        wsConnection.send("CONFIRMED_ACCIDENT");
+-      }
+-
+       crashTimer = setInterval(() => {
+         countdownVal--;
+         if (countdownEl) countdownEl.textContent = countdownVal;
+@@ -206,34 +173,21 @@ const BlackBox = (() => {
+ 
+     function triggerSOSDispatch() {
+       isCrashed = 'dispatched';
+-      const sysStatusText = document.getElementById('system-status-text');
+-      if (sysStatusText) sysStatusText.textContent = '🚑 SOS DISPATCHED · SERVICES NOTIFIED';
+-
+       const tlSosDot = document.getElementById('tl-sos-dot');
+       const tlSosText = document.getElementById('tl-sos-text');
+-      const tlAmbDot = document.getElementById('tl-amb-dot');
+-      const tlAmbText = document.getElementById('tl-amb-text');
+-
+       if (tlSosDot) tlSosDot.className = 'timeline-dot completed';
+       if (tlSosText) tlSosText.textContent = 'Sent to Family, Police & Hospital';
+-      if (tlAmbDot) tlAmbDot.className = 'timeline-dot emergency';
+-      if (tlAmbText) tlAmbText.textContent = 'En route · ETA 8 mins';
+ 
+       const timeStr = new Date().toTimeString().slice(0, 8);
+-      logs = [
+-        { t: timeStr, m: '🚑 Ambulance 108 & Police 112 Dispatched with GPS location.', type: 'alert' },
+-        ...logs
+-      ].slice(0, 10);
++      logs = [{ t: timeStr, m: '🚑 SOS Dispatched (simulated UI state).', type: 'alert' }, ...logs].slice(0, 15);
+       renderLog(logs);
+-
+-      if (simBtn) simBtn.textContent = '⚡ Reset System';
+     }
+ 
+     function resetSystem() {
+       isCrashed = false;
+       if (overlay) overlay.classList.remove('show');
++      if (crashTimer) clearInterval(crashTimer);
+ 
+-      // Restore the UI based on current connection state
+       updateTelemetryUI(telemetryState);
+ 
+       const parentCard = document.getElementById('parent-status-card');
+@@ -243,54 +197,33 @@ const BlackBox = (() => {
+       if (parentCard) parentCard.className = 'parent-status-card safe';
+       if (parentIcon) parentIcon.textContent = '🛡️';
+       if (parentText) parentText.textContent = 'RIDER IS SAFE';
+-      if (parentSub) parentSub.textContent = 'No accident or crash detected. Normal riding parameters.';
++      if (parentSub) parentSub.textContent = 'Normal riding parameters.';
+ 
+       const tlCrashDot = document.getElementById('tl-crash-dot');
+       const tlCrashText = document.getElementById('tl-crash-text');
+       const tlSosDot = document.getElementById('tl-sos-dot');
+       const tlSosText = document.getElementById('tl-sos-text');
+-      const tlAmbDot = document.getElementById('tl-amb-dot');
+-      const tlAmbText = document.getElementById('tl-amb-text');
+ 
+       if (tlCrashDot) tlCrashDot.className = 'timeline-dot pending';
+       if (tlCrashText) tlCrashText.textContent = 'No crash detected';
+       if (tlSosDot) tlSosDot.className = 'timeline-dot pending';
+       if (tlSosText) tlSosText.textContent = 'Standby';
+-      if (tlAmbDot) tlAmbDot.className = 'timeline-dot pending';
+-      if (tlAmbText) tlAmbText.textContent = 'Standby';
+-
+-      if (simBtn) simBtn.textContent = '⚡ Simulate Crash';
+-
+-      live.speed = 0; live.lean = 0; live.g = 0.0;
+-      setLive();
+ 
+       const timeStr = new Date().toTimeString().slice(0, 8);
+-      logs = [{ t: timeStr, m: '✓ System reset. Telemetry normalized.', type: 'info' }, ...logs].slice(0, 10);
++      logs = [{ t: timeStr, m: '✓ System reset. Telemetry normalized.', type: 'info' }, ...logs].slice(0, 15);
+       renderLog(logs);
+-
+-      // Tell backend to cancel SOS
+-      fetch(`${API_URL}/cancel-sos`, {
+-        method: 'POST',
+-        headers: getAuthHeaders(),
+-        body: JSON.stringify({ device_id: 'device_001' })
+-      }).catch(console.error);
+-
+-      if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+-        wsConnection.send("FALSE_ALARM");
+-      }
+-    }
+-
+-    if (simBtn) {
+-      simBtn.addEventListener('click', () => {
+-        if (isCrashed) resetSystem();
+-        else triggerCrashAlert();
+-      });
+     }
+ 
+     if (cancelSosBtn) {
+       cancelSosBtn.addEventListener('click', () => {
+-        if (crashTimer) clearInterval(crashTimer);
+-        resetSystem();
++        if (!currentDeviceId) return;
++        fetch(`${API_URL}/cancel-sos`, {
++          method: 'POST',
++          headers: getAuthHeaders(),
++          body: JSON.stringify({ device_id: currentDeviceId })
++        }).then(res => {
++          if (res.ok) resetSystem();
++        }).catch(console.error);
+       });
+     }
+ 
+@@ -315,20 +248,19 @@ const BlackBox = (() => {
+ 
+     /* ---- Telemetry UX States ---- */
+     const TELEMETRY_TIMEOUT_MS = 10000;
+-    let telemetryState = 'CONNECTING'; // CONNECTING, ONLINE, OFFLINE, STALE
++    let telemetryState = 'OFFLINE';
+     let lastTelemetryTimestamp = 0;
+-    
++
+     function updateTelemetryUI(state) {
+       telemetryState = state;
+       const sysBadge = document.getElementById('system-status-badge');
+       const sysDot = document.getElementById('system-status-dot');
+       const sysText = document.getElementById('system-status-text');
+       const rtdbStatus = document.getElementById('rtdb-status');
+-      
++
+       const mapBadge = document.querySelector('.map-large-card .status-badge');
+       const parentMapBadge = document.querySelector('#parent-view .status-badge');
+-      
+-      // Admin MCU status
++
+       const adminCards = document.querySelectorAll('#admin-view .metric-card');
+       let mcuStatus = null;
+       adminCards.forEach(c => {
+@@ -336,8 +268,7 @@ const BlackBox = (() => {
+              mcuStatus = c.querySelector('.metric-value');
+          }
+       });
+-      
+-      // Update System Badge only if not alerting
++
+       if (sysBadge && sysDot && sysText && !isCrashed) {
+         if (state === 'ONLINE') {
+           sysBadge.className = 'status-badge status-safe';
+@@ -370,21 +301,19 @@ const BlackBox = (() => {
+         }
+       }
+ 
+-      // Update RTDB / Admin Badge
+       if (rtdbStatus) {
+-        if (state === 'ONLINE') { rtdbStatus.textContent = '● RTDB Live'; rtdbStatus.className = 'status-badge status-online'; }
++        if (state === 'ONLINE') { rtdbStatus.textContent = '● Data Syncing'; rtdbStatus.className = 'status-badge status-online'; }
+         else if (state === 'STALE') { rtdbStatus.textContent = '● STALE'; rtdbStatus.className = 'status-badge status-alert'; }
+         else if (state === 'OFFLINE') { rtdbStatus.textContent = '○ OFFLINE'; rtdbStatus.className = 'status-badge'; }
+         else if (state === 'CONNECTING') { rtdbStatus.textContent = '○ CONNECTING…'; rtdbStatus.className = 'status-badge'; }
+       }
+-      
++
+       if (mcuStatus) {
+          if (state === 'ONLINE') { mcuStatus.textContent = 'Online'; mcuStatus.className = 'metric-value text-accent'; mcuStatus.style.color = ''; }
+          else if (state === 'STALE') { mcuStatus.textContent = 'Stale'; mcuStatus.className = 'metric-value text-alert'; mcuStatus.style.color = '#856404'; }
+          else { mcuStatus.textContent = 'Offline'; mcuStatus.className = 'metric-value'; mcuStatus.style.color = '#64748b'; }
+       }
+ 
+-      // Update Map Live Status
+       if (mapBadge) {
+         if (state === 'ONLINE') { mapBadge.textContent = '● GPS Live Sync'; mapBadge.className = 'status-badge status-online'; }
+         else { mapBadge.textContent = '○ Last Known GPS'; mapBadge.className = 'status-badge'; }
+@@ -394,7 +323,6 @@ const BlackBox = (() => {
+         else { parentMapBadge.textContent = '○ Last Known GPS'; parentMapBadge.className = 'status-badge'; }
+       }
+ 
+-      // Additional label adjustments for stale state
+       const values = document.querySelectorAll('.stat-card-value, .safe-banner-value');
+       values.forEach(val => {
+         if (!val.dataset.base) val.dataset.base = val.textContent;
+@@ -410,11 +338,10 @@ const BlackBox = (() => {
+       });
+     }
+ 
+-    // Interval to calculate elapsed time for "Last Updated"
+     setInterval(() => {
+       const safeSubtitle = document.querySelector('.safe-banner-subtitle');
+       const mapCoords = document.getElementById('map-coords');
+-      
++
+       if (lastTelemetryTimestamp === 0) {
+         if (safeSubtitle) safeSubtitle.textContent = `Waiting for telemetry...`;
+         if (mapCoords) {
+@@ -423,15 +350,13 @@ const BlackBox = (() => {
+         }
+         return;
+       }
+-      
++
+       const elapsed = Date.now() - lastTelemetryTimestamp;
+-      
+-      // Stale check
++
+       if (elapsed > TELEMETRY_TIMEOUT_MS && telemetryState === 'ONLINE') {
+         updateTelemetryUI('STALE');
+       }
+ 
+-      // Format elapsed time
+       let timeStr = 'Just now';
+       if (elapsed >= 1000) {
+         const sec = Math.floor(elapsed / 1000);
+@@ -442,11 +367,9 @@ const BlackBox = (() => {
+         }
+       }
+ 
+-      if (safeSubtitle) {
+-        safeSubtitle.textContent = `Last Updated: ${timeStr}`;
+-      }
+-      
+-      if (mapCoords) {
++      if (safeSubtitle) safeSubtitle.textContent = `Last Updated: ${timeStr}`;
++
++      if (mapCoords && hasValidLocation) {
+         if (!mapCoords.dataset.original) {
+           mapCoords.dataset.original = mapCoords.textContent.trim();
+         }
+@@ -458,55 +381,90 @@ const BlackBox = (() => {
+       }
+     }, 1000);
+ 
+-    /* ---- Auth listener & Real-time listeners ---- */
+-    const initApp = async () => {
+-      const uid = getUserId();
+-      if (!uid) {
+-        window.location.href = 'login.html';
+-        return;
++    /* ---- Devices, WebSocket & API Logic ---- */
++
++    async function loadDevices() {
++      try {
++        const res = await fetch(`${API_URL}/devices`, { headers: getAuthHeaders() });
++        if (handleUnauthorized(res)) return;
++        const devices = await res.json();
++
++        const selector = document.getElementById('device-selector');
++        selector.innerHTML = '';
++        if (!devices || devices.length === 0) {
++          selector.innerHTML = '<option value="">No devices found</option>';
++          return;
++        }
++
++        devices.forEach(d => {
++          const opt = document.createElement('option');
++          opt.value = d.id;
++          opt.textContent = `${d.id} (${d.type || 'UNKNOWN'})`;
++          selector.appendChild(opt);
++        });
++
++        currentDeviceId = devices[0].id;
++        connectWebSocket(currentDeviceId);
++        startCameraPoll();
++
++        selector.addEventListener('change', (e) => {
++          currentDeviceId = e.target.value;
++          connectWebSocket(currentDeviceId);
++          startCameraPoll();
++        });
++
++      } catch (err) {
++        console.error("Failed to load devices", err);
++        const selector = document.getElementById('device-selector');
++        if (selector) selector.innerHTML = '<option value="">Error loading devices</option>';
+       }
++    }
+ 
+-      const r = await loadRider() || { name: 'Rider', age: '27', bloodGroup: 'O+', emergency: '+91 90000 00000' };
+-      updateDashboardUI(r);
++    let wsReconnectDelay = 1000;
++    const WS_MAX_RECONNECT_DELAY = 30000;
++    let manualDisconnect = false;
+ 
+-      // Start WebSocket Telemetry Listener with auto-reconnect
+-      const wsUrl = `${WS_BASE_URL}/ws/telemetry/device_001`;
+-      let wsReconnectDelay = 1000;
+-      const WS_MAX_RECONNECT_DELAY = 30000;
++    function connectWebSocket(deviceId) {
++      if (!deviceId) return;
+ 
+-      function connectWebSocket() {
+-        wsConnection = new WebSocket(wsUrl);
++      if (wsConnection) {
++        manualDisconnect = true;
++        wsConnection.close();
++      }
++      manualDisconnect = false;
+ 
+-        wsConnection.onopen = () => {
+-          hideSplash();
+-          wsReconnectDelay = 1000; // reset on successful connection
+-          updateTelemetryUI('CONNECTING'); // Wait for first payload to go ONLINE
+-        };
++      const wsUrl = `${WS_BASE_URL}/ws/dashboard/${deviceId}`;
++      updateTelemetryUI('CONNECTING');
+ 
+-        wsConnection.onmessage = (event) => {
+-          hideSplash();
+-          if (event.data === "CONFIRMED_ACCIDENT" && !isCrashed) {
+-             triggerCrashAlert();
+-             return;
++      wsConnection = new WebSocket(wsUrl);
++
++      wsConnection.onopen = () => {
++        hideSplash();
++        wsReconnectDelay = 1000;
++      };
++
++      wsConnection.onmessage = (event) => {
++        hideSplash();
++
++        try {
++          const data = JSON.parse(event.data);
++
++          if (data.type === 'accident_status' || data.accident_status === 'CONFIRMED' || event.data.includes("CONFIRMED_ACCIDENT")) {
++             if (!isCrashed) triggerCrashAlert();
+           }
+-          if (event.data === "FALSE_ALARM") {
++          if (data.type === 'device_status' && data.status === 'offline') {
++             updateTelemetryUI('OFFLINE');
+              return;
+           }
+ 
+-          try {
+-            const data = JSON.parse(event.data);
+-            
+-            // Mark telemetry as received
++          if (data.speed_kmh !== undefined || data.latitude !== undefined) {
+             lastTelemetryTimestamp = Date.now();
+-            if (telemetryState !== 'ONLINE') {
+-              updateTelemetryUI('ONLINE');
+-            }
++            if (telemetryState !== 'ONLINE') updateTelemetryUI('ONLINE');
+ 
+             if (!isCrashed) {
+               live.speed = data.speed_kmh ?? data.speed ?? 0;
+               live.lean = data.lean_angle ?? data.lean ?? 0;
+ 
+-              // Calculate G-force from raw accelerometer or use direct value
+               let computedG = data.g_force ?? data.gforce ?? 0.0;
+               if (data.ax !== undefined) {
+                  computedG = Math.sqrt(data.ax*data.ax + data.ay*data.ay + data.az*data.az);
+@@ -514,45 +472,190 @@ const BlackBox = (() => {
+               live.g = computedG;
+               if (data.battery !== undefined) live.batt = data.battery;
+ 
+-              if (data.latitude && data.longitude) {
+-                currentPos.lat = data.latitude;
+-                currentPos.lng = data.longitude;
+-                if (riderMarker) riderMarker.setLatLng([currentPos.lat, currentPos.lng]);
+-                if (parentMarker) parentMarker.setLatLng([currentPos.lat, currentPos.lng]);
+-                if (policeMarker) policeMarker.setLatLng([currentPos.lat, currentPos.lng]);
+-              }
++              const dt = new Date().toTimeString().slice(0, 8);
++              logs = [{ t: dt, m: `Telemetry update: ${live.speed}km/h`, type: 'info' }, ...logs].slice(0, 15);
++              renderLog(logs);
+ 
+-              if (data.crash_detected && !isCrashed) {
+-                triggerCrashAlert();
+-              } else {
+-                setLive();
++              if (data.latitude && data.longitude) {
++                if (!hasValidLocation) {
++                  currentPos.lat = data.latitude;
++                  currentPos.lng = data.longitude;
++                  hasValidLocation = true;
++                  initMaps();
++                } else {
++                  currentPos.lat = data.latitude;
++                  currentPos.lng = data.longitude;
++                  if (riderMarker) riderMarker.setLatLng([currentPos.lat, currentPos.lng]);
++                  if (parentMarker) parentMarker.setLatLng([currentPos.lat, currentPos.lng]);
++                  if (policeMarker) policeMarker.setLatLng([currentPos.lat, currentPos.lng]);
++                }
++                const mapCoords = document.getElementById('map-coords');
++                if (mapCoords) mapCoords.textContent = `LAT ${currentPos.lat.toFixed(5)}° N · LON ${currentPos.lng.toFixed(5)}° E`;
+               }
++              setLive();
+             }
+-          } catch (_) {
+-            // non-JSON control message, ignored
+           }
+-        };
++        } catch (_) {
++          if (event.data === "CONFIRMED_ACCIDENT" && !isCrashed) triggerCrashAlert();
++        }
++      };
+ 
+-        wsConnection.onerror = () => {
+-          updateTelemetryUI('OFFLINE');
+-        };
++      wsConnection.onerror = () => {
++        updateTelemetryUI('OFFLINE');
++      };
+ 
+-        wsConnection.onclose = () => {
+-          updateTelemetryUI('OFFLINE');
+-          // Auto-reconnect with exponential backoff
+-          setTimeout(() => {
+-            updateTelemetryUI('CONNECTING');
+-            connectWebSocket();
+-          }, wsReconnectDelay);
+-          wsReconnectDelay = Math.min(wsReconnectDelay * 2, WS_MAX_RECONNECT_DELAY);
+-        };
+-      }
++      wsConnection.onclose = () => {
++        if (manualDisconnect) return;
++        updateTelemetryUI('OFFLINE');
++        setTimeout(() => {
++          if (!manualDisconnect) connectWebSocket(currentDeviceId);
++        }, wsReconnectDelay);
++        wsReconnectDelay = Math.min(wsReconnectDelay * 2, WS_MAX_RECONNECT_DELAY);
++      };
++    }
+ 
+-      connectWebSocket();
++    const initApp = async () => {
++      const uid = getUserId();
++      if (!uid) {
++        window.location.href = 'login.html';
++        return;
++      }
++      const r = await loadRider() || { name: 'Rider', age: '27', bloodGroup: 'O+', emergency: '+91 90000 00000' };
++      updateDashboardUI(r);
++      loadDevices();
++      setupCommands();
+     };
+ 
+     initApp();
+ 
++    /* ---- Command API Integration ---- */
++    function setupCommands() {
++      const cmdBtns = document.querySelectorAll('.cmd-btn');
++      const feedback = document.getElementById('command-feedback');
++      const badge = document.getElementById('cmd-status-badge');
++
++      cmdBtns.forEach(btn => {
++        btn.addEventListener('click', async () => {
++          const cmd = btn.dataset.cmd;
++          if (!currentDeviceId || !cmd) return;
++
++          feedback.style.display = 'block';
++          feedback.textContent = `Sending ${cmd}...`;
++          badge.textContent = '● Sending';
++          badge.style.color = 'var(--text-muted)';
++
++          btn.disabled = true;
++
++          try {
++            const res = await fetch(`${API_URL}/commands`, {
++              method: 'POST',
++              headers: getAuthHeaders(),
++              body: JSON.stringify({ device_id: currentDeviceId, command: cmd })
++            });
++
++            if (!res.ok) throw new Error('Command failed');
++            const data = await res.json();
++
++            feedback.textContent = `Command status: ${data.status || 'RECEIVED'}`;
++            badge.textContent = '● Executed';
++            badge.style.color = 'var(--accent)';
++
++            const timeStr = new Date().toTimeString().slice(0, 8);
++            logs = [{ t: timeStr, m: `Command ${cmd} sent. Status: ${data.status || 'RECEIVED'}`, type: 'info' }, ...logs].slice(0, 15);
++            renderLog(logs);
++
++          } catch (e) {
++            feedback.textContent = `Error: ${e.message}`;
++            badge.textContent = '● Failed';
++            badge.style.color = 'var(--emergency)';
++          } finally {
++            setTimeout(() => { btn.disabled = false; feedback.style.display = 'none'; }, 3000);
++          }
++        });
++      });
++    }
++
++    /* ---- Camera Integration ---- */
++    async function fetchCameraMetadata() {
++      if (!currentDeviceId) return;
++      const statusText = document.getElementById('camera-loading-text');
++      const snapshot = document.getElementById('camera-snapshot');
++      const stream = document.getElementById('camera-stream');
++      const camStatus = document.getElementById('cam-status-badge');
++      const lastUpdate = document.getElementById('cam-last-update');
++
++      try {
++        const res = await fetch(`${API_URL}/camera/${currentDeviceId}/metadata`, { headers: getAuthHeaders() });
++        if (!res.ok) {
++           if (res.status === 404) {
++             throw new Error("No camera metadata found");
++           }
++           throw new Error("Failed to fetch camera metadata");
++        }
++
++        const data = await res.json();
++        if (statusText) statusText.style.display = 'none';
++
++        if (data.status === 'online' || data.is_online) {
++           if (camStatus) {
++               camStatus.textContent = '● Live';
++               camStatus.style.color = 'var(--accent)';
++               camStatus.style.borderColor = 'var(--accent)';
++           }
++        } else {
++           if (camStatus) {
++               camStatus.textContent = '○ Offline';
++               camStatus.style.color = 'var(--text-secondary)';
++               camStatus.style.borderColor = 'var(--border)';
++           }
++        }
++
++        if (data.last_updated && lastUpdate) {
++           const d = new Date(data.last_updated);
++           lastUpdate.textContent = d.toLocaleTimeString();
++        }
++
++        if (data.stream_url) {
++           if (snapshot) snapshot.style.display = 'none';
++           if (stream) {
++             stream.style.display = 'block';
++             if (stream.src !== data.stream_url) stream.src = data.stream_url;
++           }
++        } else if (data.snapshot_url) {
++           if (stream) stream.style.display = 'none';
++           if (snapshot) {
++             snapshot.style.display = 'block';
++             snapshot.src = data.snapshot_url;
++           }
++        } else {
++           if (statusText) {
++             statusText.style.display = 'block';
++             statusText.textContent = "Camera online but no feed/snapshot URL available";
++           }
++        }
++      } catch (err) {
++        if (statusText) {
++          statusText.style.display = 'block';
++          statusText.textContent = err.message;
++        }
++        if (snapshot) snapshot.style.display = 'none';
++        if (stream) stream.style.display = 'none';
++        if (camStatus) {
++           camStatus.textContent = '○ Error';
++           camStatus.style.color = 'var(--emergency)';
++        }
++      }
++    }
++
++    function startCameraPoll() {
++      if (cameraPollTimer) clearInterval(cameraPollTimer);
++      fetchCameraMetadata();
++      cameraPollTimer = setInterval(fetchCameraMetadata, 30000); // refresh every 30s
++    }
++
++    const refCamBtn = document.getElementById('refresh-camera-btn');
++    if (refCamBtn) refCamBtn.addEventListener('click', fetchCameraMetadata);
++
+     /* Logout Button */
+     const logoutBtn = document.getElementById('logout-btn');
+     if (logoutBtn) {
+@@ -565,12 +668,12 @@ const BlackBox = (() => {
+ 
+     /* Maps Initialization */
+     function initMaps() {
+-      if (!window.L) return;
++      if (!window.L || !hasValidLocation) return;
++      if (riderMap) return; // already init
+ 
+       const mapOptions = { zoomControl: true, attributionControl: false };
+       const tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+ 
+-      // Rider Map
+       const mapDiv = document.getElementById('map');
+       if (mapDiv) {
+         riderMap = L.map('map', mapOptions).setView([currentPos.lat, currentPos.lng], 15);
+@@ -578,7 +681,6 @@ const BlackBox = (() => {
+         riderMarker = L.marker([currentPos.lat, currentPos.lng]).addTo(riderMap);
+       }
+ 
+-      // Parent Map
+       const parentMapDiv = document.getElementById('parent-map');
+       if (parentMapDiv) {
+         parentMap = L.map('parent-map', mapOptions).setView([currentPos.lat, currentPos.lng], 15);
+@@ -586,7 +688,6 @@ const BlackBox = (() => {
+         parentMarker = L.marker([currentPos.lat, currentPos.lng]).addTo(parentMap);
+       }
+ 
+-      // Police Map
+       const policeMapDiv = document.getElementById('police-map');
+       if (policeMapDiv) {
+         policeMap = L.map('police-map', mapOptions).setView([currentPos.lat, currentPos.lng], 15);
+@@ -595,78 +696,40 @@ const BlackBox = (() => {
+       }
+     }
+ 
+-    /* Charts */
+-    drawRideChart();
+-    drawWeekChart();
+-    initMaps();
+-    setLive();
+-  }
+-
+-  /* ---- Chart Functions (Clean Canvas Drawing) ---- */
+-  function drawRideChart() {
+-    const canvas = document.getElementById('ride-chart');
+-    if (!canvas) return;
+-    const ctx = canvas.getContext('2d');
+-    const dpr = window.devicePixelRatio || 1;
+-    const rect = canvas.getBoundingClientRect();
+-    canvas.width = rect.width * dpr;
+-    canvas.height = 200 * dpr;
+-    ctx.scale(dpr, dpr);
+-
+-    const w = rect.width, h = 200;
+-    ctx.clearRect(0, 0, w, h);
+-
+-    // Draw background grid lines
+-    ctx.strokeStyle = '#E2E8F0';
+-    ctx.lineWidth = 1;
+-    for (let i = 1; i <= 3; i++) {
+-      const y = (h / 4) * i;
+-      ctx.beginPath(); ctx.moveTo(30, y); ctx.lineTo(w - 10, y); ctx.stroke();
++    /* Charts (Clearing mock data rendering) */
++    function drawRideChart() {
++      const canvas = document.getElementById('ride-chart');
++      if (!canvas) return;
++      const ctx = canvas.getContext('2d');
++      const dpr = window.devicePixelRatio || 1;
++      const rect = canvas.getBoundingClientRect();
++      canvas.width = rect.width * dpr;
++      canvas.height = 200 * dpr;
++      ctx.scale(dpr, dpr);
++      ctx.clearRect(0, 0, rect.width, 200);
++      ctx.fillStyle = '#64748b';
++      ctx.font = '12px sans-serif';
++      ctx.fillText('Awaiting historical data sync...', 20, 100);
+     }
+ 
+-    // Speed curve (blue)
+-    ctx.strokeStyle = '#2563EB';
+-    ctx.lineWidth = 2.5;
+-    ctx.beginPath();
+-    const data = [10, 25, 42, 55, 60, 52, 48, 65, 70, 58, 40, 30, 20, 0];
+-    const step = (w - 40) / (data.length - 1);
+-
+-    data.forEach((val, i) => {
+-      const x = 30 + i * step;
+-      const y = h - 30 - (val / 80) * (h - 50);
+-      if (i === 0) ctx.moveTo(x, y);
+-      else ctx.lineTo(x, y);
+-    });
+-    ctx.stroke();
+-  }
++    function drawWeekChart() {
++      const canvas = document.getElementById('week-chart');
++      if (!canvas) return;
++      const ctx = canvas.getContext('2d');
++      const dpr = window.devicePixelRatio || 1;
++      const rect = canvas.getBoundingClientRect();
++      canvas.width = rect.width * dpr;
++      canvas.height = 160 * dpr;
++      ctx.scale(dpr, dpr);
++      ctx.clearRect(0, 0, rect.width, 160);
++      ctx.fillStyle = '#64748b';
++      ctx.font = '12px sans-serif';
++      ctx.fillText('Awaiting historical data sync...', 20, 80);
++    }
+ 
+-  function drawWeekChart() {
+-    const canvas = document.getElementById('week-chart');
+-    if (!canvas) return;
+-    const ctx = canvas.getContext('2d');
+-    const dpr = window.devicePixelRatio || 1;
+-    const rect = canvas.getBoundingClientRect();
+-    canvas.width = rect.width * dpr;
+-    canvas.height = 160 * dpr;
+-    ctx.scale(dpr, dpr);
+-
+-    const w = rect.width, h = 160;
+-    ctx.clearRect(0, 0, w, h);
+-
+-    const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+-    const vals = [25, 40, 18, 55, 32, 70, 12];
+-    const bw = (w - 40) / days.length - 8;
+-
+-    vals.forEach((v, i) => {
+-      const x = 20 + i * (bw + 8);
+-      const bh = (v / 80) * (h - 40);
+-      ctx.fillStyle = '#2563EB';
+-      ctx.fillRect(x, h - 25 - bh, bw, bh);
+-
+-      ctx.fillStyle = '#94A3B8';
+-      ctx.font = '10px Inter, sans-serif';
+-      ctx.fillText(days[i], x + bw / 3, h - 8);
+-    });
++    drawRideChart();
++    drawWeekChart();
++    setLive();
+   }
+ 
+   return { setupDashboard };
+diff --git a/dashboard.html b/dashboard.html
+index 0674b2d..3b58e49 100644
+--- a/dashboard.html
++++ b/dashboard.html
+@@ -30,7 +30,9 @@
+           <span class="status-dot status-dot-green" id="system-status-dot"></span>
+           <span id="system-status-text">System Armed · Safe</span>
+         </span>
+-        <button id="sim-crash-btn" class="btn btn-emergency btn-sm">⚡ Simulate Crash</button>
++        <select id="device-selector" class="form-input btn-sm" style="background:var(--bg); border-color:var(--border); width:auto; padding:4px 8px; font-size:0.875rem; color:var(--text); cursor:pointer;">
++          <option value="">Loading devices...</option>
++        </select>
+         <a href="#" id="logout-btn" class="btn btn-ghost btn-sm" style="color:var(--text-secondary);">Logout</a>
+       </div>
+     </div>
+@@ -66,7 +68,7 @@
+          1. RIDER DASHBOARD VIEW
+          ============================================================ -->
+     <div class="dash-view active" id="rider-view">
+-      
++
+       <!-- Action Buttons Row -->
+       <div class="dash-actions-row">
+         <button class="btn btn-ghost btn-sm btn-pill">📞 Call Rider</button>
+@@ -150,7 +152,7 @@
+ 
+         <!-- Right Vertical Cards -->
+         <div class="dash-grid-vertical">
+-          
++
+           <!-- AI SAFETY ASSISTANT -->
+           <div class="card">
+             <div class="card-header">
+@@ -211,7 +213,7 @@
+             <div class="card-header">
+               <span class="card-title">DEVICE & RIDER HEALTH</span>
+             </div>
+-            
++
+             <div class="health-overview" style="margin-top:16px;">
+               <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                 <span style="font-size:0.875rem;">Safety Score</span>
+@@ -252,7 +254,7 @@
+ 
+       <!-- Bottom Section: 3 Columns -->
+       <div class="dash-grid-3" style="margin-top:20px;">
+-        
++
+         <!-- TODAY'S RIDE ANALYTICS -->
+         <div class="card">
+           <div class="card-header">
+@@ -310,25 +312,26 @@
+         <!-- BLACK BOX RECORDER -->
+         <div class="card">
+           <div class="card-header">
+-            <span class="card-title" style="display:flex; align-items:center; gap:8px;"><span style="display:inline-block; width:10px; height:10px; background:#333; border-radius:2px;"></span> BLACK BOX RECORDER</span>
+-            <span style="font-size:0.7rem; color:var(--accent);">● Recording</span>
+-          </div>
+-          
+-          <div style="display:flex; justify-content:space-between; margin-top:16px; margin-bottom:20px;">
+-            <div>
+-              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Storage</div>
+-              <strong style="font-size:1.1rem;">82% Free</strong>
+-            </div>
+-            <div style="text-align:right;">
+-              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Last Sync</div>
+-              <strong style="font-size:1.1rem; color:var(--accent);">5 sec ago</strong>
+-            </div>
++            <span class="card-title" style="display:flex; align-items:center; gap:8px;">
++              <span style="display:inline-block; width:10px; height:10px; background:var(--primary); border-radius:2px;"></span> DEVICE CONTROLS
++            </span>
++            <span id="cmd-status-badge" style="font-size:0.7rem; color:var(--text-muted);">● Ready</span>
++          </div>
++
++          <div id="command-feedback" style="margin-top:12px; font-size:0.8rem; padding:8px; border-radius:4px; display:none; background:var(--bg); border:1px solid var(--border-light);"></div>
++
++          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:16px;">
++            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="buzzer_on">Buzzer ON</button>
++            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="buzzer_off">Buzzer OFF</button>
++            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="led_red">LED Red</button>
++            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="led_green">LED Green</button>
++            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="led_off">LED OFF</button>
++            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="upload_snapshot">Snapshot</button>
+           </div>
+ 
+-          <div style="display:flex; flex-direction:column; gap:12px;">
+-            <button class="btn btn-ghost" style="border:1px solid var(--border-light); width:100%; justify-content:center; background:#f8f9fa;">📊 Download Logs</button>
+-            <button class="btn btn-ghost" style="border:1px solid var(--border-light); width:100%; justify-content:center; background:#f8f9fa;">📉 Download Sensor Data</button>
+-            <button class="btn btn-outline" style="width:100%; justify-content:center; border-color:var(--primary); color:var(--primary);">▶ Replay Accident</button>
++          <div style="display:flex; flex-direction:column; gap:8px; margin-top:16px;">
++            <button class="btn btn-emergency btn-sm cmd-btn" data-cmd="sos_on" style="justify-content:center;">🚨 Trigger SOS Alarm</button>
++            <button class="btn btn-secondary btn-sm cmd-btn" data-cmd="sos_off" style="justify-content:center;">Stop SOS Alarm</button>
+           </div>
+         </div>
+ 
+@@ -508,15 +511,21 @@
+ 
+         <!-- Video & Photo Evidence -->
+         <div class="dash-col-4">
+-          <div class="card">
+-            <span class="card-title">Recorded Evidence</span>
+-            <div style="margin-top:16px; border-radius:var(--radius); overflow:hidden; background:#000;">
+-              <video src="No_I_have_given_the_screensho.mp4" controls
+-                style="width:100%; height:180px; object-fit:cover;"></video>
++          <div class="card" id="camera-card">
++            <div class="card-header">
++              <span class="card-title">Live Camera Feed</span>
++              <span id="cam-status-badge" class="status-badge" style="background:var(--bg); border:1px solid var(--border); color:var(--text-secondary);">Unknown</span>
+             </div>
+-            <div style="margin-top:12px; font-size:0.8rem; color:var(--text-secondary);">
+-              <strong>Video Clip:</strong> 10s pre-impact to 15s post-impact.<br />
+-              <strong>File Hash:</strong> <code>0x8f2a99c1e4d7</code> (Tamper-proof)
++            <div id="camera-container" style="margin-top:16px; border-radius:var(--radius); overflow:hidden; background:#000; position:relative; min-height: 180px; display:flex; align-items:center; justify-content:center;">
++              <span id="camera-loading-text" style="color:#64748b; font-size:0.875rem;">Select device to load camera...</span>
++              <img id="camera-snapshot" src="" style="width:100%; height:auto; object-fit:contain; display:none;" alt="Camera Snapshot"/>
++              <video id="camera-stream" autoplay muted playsinline controls style="width:100%; height:180px; object-fit:cover; display:none;"></video>
++            </div>
++            <div style="margin-top:12px; font-size:0.8rem; color:var(--text-secondary); display:flex; justify-content:space-between; align-items:center;">
++              <div>
++                <strong>Last Updated:</strong> <span id="cam-last-update">Never</span>
++              </div>
++              <button id="refresh-camera-btn" class="btn btn-ghost btn-sm" style="padding:4px 8px;">🔄 Refresh</button>
+             </div>
+           </div>
+ 
