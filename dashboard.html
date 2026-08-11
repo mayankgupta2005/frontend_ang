@@ -672,61 +672,36 @@
   <!-- ============================================================
        EMERGENCY MODE OVERLAY (SIGNATURE FEATURE)
        ============================================================ -->
-  <div class="emergency-overlay" id="crash-overlay">
-    <div class="emergency-banner">
-      ⚠ ACCIDENT DETECTED
-    </div>
+  <div class="crash-overlay" id="crash-overlay">
+    <div class="crash-box">
+      <div class="crash-countdown-ring" id="crash-countdown">10</div>
+      
+      <h2 class="text-emergency" style="font-family: var(--font-heading); font-size: 2rem; margin-bottom: 8px; letter-spacing: -0.02em;">⚠ ACCIDENT DETECTED</h2>
+      <p style="color: var(--text-secondary); margin-bottom: 32px;">Seconds until automatic emergency service dispatch</p>
 
-    <div class="emergency-countdown">
-      <div class="emergency-countdown-num" id="crash-countdown">10</div>
-      <div class="emergency-countdown-label">Seconds until automatic emergency service dispatch</div>
-    </div>
-
-    <div class="emergency-info-grid">
-      <div class="emergency-info-item">
-        <span class="emergency-info-icon">📍</span>
-        <div>
-          <div style="font-size:0.75rem; color:var(--text-muted);">Live Location</div>
-          <strong>LAT 29.3909° N, LON 76.9635° E</strong>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 32px; text-align: left;">
+        <div style="background: rgba(255, 42, 95, 0.1); border: 1px solid rgba(255, 42, 95, 0.2); padding: 16px; border-radius: var(--radius-sm);">
+          <span style="font-size: 1.5rem; display: block; margin-bottom: 8px;">📍</span>
+          <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Live Location</div>
+          <strong style="color: var(--text);">LAT 29.39° N, LON 76.96° E</strong>
         </div>
-      </div>
-      <div class="emergency-info-item">
-        <span class="emergency-info-icon">📱</span>
-        <div>
-          <div style="font-size:0.75rem; color:var(--text-muted);">Contacts</div>
-          <strong id="crash-emg-num">Notifying Parents & Emergency Contacts</strong>
-        </div>
-      </div>
-      <div class="emergency-info-item">
-        <span class="emergency-info-icon">🎥</span>
-        <div>
-          <div style="font-size:0.75rem; color:var(--text-muted);">Evidence</div>
+        <div style="background: rgba(255, 42, 95, 0.1); border: 1px solid rgba(255, 42, 95, 0.2); padding: 16px; border-radius: var(--radius-sm);">
+          <span style="font-size: 1.5rem; display: block; margin-bottom: 8px;">🎥</span>
+          <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Evidence</div>
           <strong class="text-accent">Video Recording Active</strong>
         </div>
       </div>
-      <div class="emergency-info-item">
-        <span class="emergency-info-icon">🚑</span>
-        <div>
-          <div style="font-size:0.75rem; color:var(--text-muted);">Ambulance ETA</div>
-          <strong class="text-emergency">~ 8 Minutes</strong>
-        </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-bottom: 24px;">
+        <button class="btn btn-outline-danger" onclick="alert('Calling Ambulance 108...')">📞 Call Ambulance (108)</button>
+        <button class="btn btn-outline-danger" onclick="alert('Calling Police 112...')">🚓 Call Police (112)</button>
+        <button class="btn btn-secondary" onclick="alert('Location link shared to WhatsApp/SMS...')">📤 Share Live Location</button>
       </div>
-    </div>
 
-    <div class="emergency-actions">
-      <button class="action-btn action-btn-emergency" onclick="alert('Calling Ambulance 108...')">📞 Call Ambulance
-        (108)</button>
-      <button class="action-btn action-btn-emergency" onclick="alert('Calling Police 112...')">🚓 Call Police
-        (112)</button>
-      <button class="action-btn" onclick="alert('Opening map navigation...')">🗺️ Navigate to Rider</button>
-      <button class="action-btn" onclick="alert('Location link shared to WhatsApp/SMS...')">📤 Share Live
-        Location</button>
+      <button class="btn btn-secondary" id="cancel-sos-btn" style="width: 100%;">
+        ✕ Cancel False Alarm
+      </button>
     </div>
-
-    <button class="btn btn-secondary" id="cancel-sos-btn"
-      style="background:white; color:var(--text); border:1px solid var(--border);">
-      ✕ Cancel False Alarm
-    </button>
   </div>
 
   <!-- Leaflet JS -->

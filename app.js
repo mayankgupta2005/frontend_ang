@@ -44,6 +44,17 @@ const BlackBox = (() => {
     }
   }
 
+  /* ---- Voice Alert Helper ---- */
+  function speakAlert(message) {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+  }
+
   /* ===================================================
      DASHBOARD PAGE SETUP
      =================================================== */
@@ -127,6 +138,8 @@ const BlackBox = (() => {
     function triggerCrashAlert() {
       if (isCrashed) return;
       isCrashed = 'alerting';
+      
+      speakAlert("Warning! Accident detected. Emergency mode activated.");
 
       const sysStatusDot = document.getElementById('system-status-dot');
       const sysStatusText = document.getElementById('system-status-text');
@@ -173,6 +186,9 @@ const BlackBox = (() => {
 
     function triggerSOSDispatch() {
       isCrashed = 'dispatched';
+      
+      speakAlert("Emergency SOS dispatched to family, police, and hospital.");
+      
       const tlSosDot = document.getElementById('tl-sos-dot');
       const tlSosText = document.getElementById('tl-sos-text');
       if (tlSosDot) tlSosDot.className = 'timeline-dot completed';
@@ -187,6 +203,8 @@ const BlackBox = (() => {
       isCrashed = false;
       if (overlay) overlay.classList.remove('show');
       if (crashTimer) clearInterval(crashTimer);
+
+      speakAlert("System reset. Normal riding parameters resumed.");
 
       updateTelemetryUI(telemetryState);
 
