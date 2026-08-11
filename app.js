@@ -44,8 +44,48 @@ const BlackBox = (() => {
     }
   }
 
-  /* ---- Voice Alert Helper ---- */
-  function speakAlert(message) {
+  /* ---- TTS Engine ---- */
+  let ttsEnabled = localStorage.getItem('novashield_tts') === 'true';
+
+  function setupTTS() {
+    const btn = document.getElementById('tts-toggle');
+    if (!btn) return;
+
+    btn.textContent = ttsEnabled ? '🔊' : '🔇';
+    btn.setAttribute('aria-pressed', ttsEnabled);
+
+    btn.addEventListener('click', () => {
+      ttsEnabled = !ttsEnabled;
+      localStorage.setItem('novashield_tts', ttsEnabled);
+      btn.textContent = ttsEnabled ? '🔊' : '🔇';
+      btn.setAttribute('aria-pressed', ttsEnabled);
+      announceTTS(ttsEnabled ? "Voice assistant enabled" : "Voice assistant disabled", true);
+    });
+
+    const interactables = document.querySelectorAll('button, a, .segment-btn, select');
+    interactables.forEach(el => {
+      const text = el.getAttribute('aria-label') || el.innerText || el.value;
+      if (!text || text.trim() === '') return;
+      
+      let debounceTimeout;
+      const announce = () => {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => announceTTS(text.trim()), 300);
+      };
+      
+      el.addEventListener('mouseenter', announce);
+      el.addEventListener('focus', announce);
+    });
+  }
+
+  function announceTTS(message, force = false, priority = 'polite') {
+    if (!force && !ttsEnabled) return;
+
+    const politeLive = document.getElementById('aria-live-polite');
+    const assertiveLive = document.getElementById('aria-live-assertive');
+    if (priority === 'assertive' && assertiveLive) assertiveLive.textContent = message;
+    else if (politeLive) politeLive.textContent = message;
+
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(message);
@@ -55,36 +95,87 @@ const BlackBox = (() => {
     }
   }
 
+  /* ---- Voice Alert Helper ---- */
+  function speakAlert(message) {
+    announceTTS(message, false, 'assertive');
+  }
+
   /* ===================================================
      DASHBOARD PAGE SETUP
      =================================================== */
   function setupDashboard() {
+    setupTTS();
     setTimeout(hideSplash, 6000);
 
     /* ---- Tab Switching Logic ---- */
     const tabs = document.querySelectorAll('.dash-tab');
     const views = document.querySelectorAll('.dash-view');
+    const secondarySelect = document.getElementById('secondary-view-select');
+
+    function switchView(targetViewId) {
+      localStorage.setItem('novashield_last_view', targetViewId);
+      
+      tabs.forEach(t => t.classList.remove('active'));
+      views.forEach(v => {
+        v.classList.remove('active');
+      });
+
+      const activeTab = document.querySelector(`.dash-tab[data-tab="${targetViewId}"]`);
+      if (activeTab) activeTab.classList.add('active');
+      
+      if (secondarySelect) {
+        if (targetViewId !== 'rider-view' && targetViewId !== 'parent-view') {
+          secondarySelect.value = targetViewId;
+        } else {
+          secondarySelect.value = '';
+        }
+      }
+
+      const targetView = document.getElementById(targetViewId);
+      if (targetView) targetView.classList.add('active');
+
+      setTimeout(() => {
+        if (riderMap) riderMap.invalidateSize();
+        if (parentMap) parentMap.invalidateSize();
+        if (policeMap) policeMap.invalidateSize();
+      }, 250);
+      
+      announceTTS(`Switched to ${targetViewId.replace('-view', ' view')}`);
+    }
 
     tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        const targetViewId = tab.dataset.tab;
-        tabs.forEach(t => t.classList.remove('active'));
-        views.forEach(v => v.classList.remove('active'));
-
-        tab.classList.add('active');
-        const targetView = document.getElementById(targetViewId);
-        if (targetView) targetView.classList.add('active');
-
-        setTimeout(() => {
-          if (riderMap) riderMap.invalidateSize();
-          if (parentMap) parentMap.invalidateSize();
-          if (policeMap) policeMap.invalidateSize();
-        }, 200);
-      });
+      tab.addEventListener('click', () => switchView(tab.dataset.tab));
     });
+
+    if (secondarySelect) {
+      secondarySelect.addEventListener('change', (e) => {
+        if (e.target.value) switchView(e.target.value);
+      });
+    }
+
+    const savedView = localStorage.getItem('novashield_last_view');
+    if (savedView) switchView(savedView);
 
     /* ---- Live telemetry state ---- */
     const live = { speed: 0, lean: 0, g: 0.0, batt: 0 };
+
+    function animateValue(obj, start, end, duration) {
+      if (!obj) return;
+      let startTimestamp = null;
+      const step = (timestamp) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        const val = Math.floor(progress * (end - start) + start);
+        obj.textContent = val + (obj.dataset.unit || '');
+        obj.classList.remove('skeleton'); // Remove skeleton on data
+        if (progress < 1) {
+          window.requestAnimationFrame(step);
+        } else {
+          obj.textContent = end + (obj.dataset.unit || '');
+        }
+      };
+      window.requestAnimationFrame(step);
+    }
 
     function setLive() {
       const speedEl = document.getElementById('live-speed');
@@ -93,11 +184,30 @@ const BlackBox = (() => {
       const battValEl = document.getElementById('batt-val');
       const battBarEl = document.getElementById('batt-bar');
 
-      if (speedEl) speedEl.textContent = live.speed;
-      if (leanEl) leanEl.textContent = live.lean + '°';
-      if (gEl) gEl.textContent = live.g.toFixed(1) + 'G';
-      if (battValEl) battValEl.textContent = live.batt + '%';
+      if (speedEl) {
+        const oldVal = parseInt(speedEl.textContent) || 0;
+        speedEl.dataset.unit = '';
+        if (oldVal !== live.speed) animateValue(speedEl, oldVal, live.speed, 500);
+      }
+      if (leanEl) {
+        leanEl.textContent = live.lean + '°';
+        leanEl.classList.remove('skeleton');
+      }
+      if (gEl) {
+        gEl.textContent = live.g.toFixed(1) + 'G';
+        gEl.classList.remove('skeleton');
+      }
+      if (battValEl) {
+        const oldVal = parseInt(battValEl.textContent) || 0;
+        battValEl.dataset.unit = '%';
+        if (oldVal !== live.batt) animateValue(battValEl, oldVal, live.batt, 500);
+      }
       if (battBarEl) battBarEl.style.width = live.batt + '%';
+      
+      const gpsEl = document.getElementById('live-gps');
+      const netEl = document.getElementById('live-network');
+      if (gpsEl) gpsEl.classList.remove('skeleton');
+      if (netEl) netEl.classList.remove('skeleton');
     }
 
     /* ---- Crash & Emergency State ---- */
@@ -495,17 +605,23 @@ const BlackBox = (() => {
               renderLog(logs);
 
               if (data.latitude && data.longitude) {
+                currentPos.lat = data.latitude;
+                currentPos.lng = data.longitude;
                 if (!hasValidLocation) {
-                  currentPos.lat = data.latitude;
-                  currentPos.lng = data.longitude;
                   hasValidLocation = true;
-                  initMaps();
-                } else {
-                  currentPos.lat = data.latitude;
-                  currentPos.lng = data.longitude;
-                  if (riderMarker) riderMarker.setLatLng([currentPos.lat, currentPos.lng]);
-                  if (parentMarker) parentMarker.setLatLng([currentPos.lat, currentPos.lng]);
-                  if (policeMarker) policeMarker.setLatLng([currentPos.lat, currentPos.lng]);
+                }
+                
+                if (riderMarker) {
+                  riderMarker.setLatLng([currentPos.lat, currentPos.lng]);
+                  riderMap.setView([currentPos.lat, currentPos.lng]);
+                }
+                if (parentMarker) {
+                  parentMarker.setLatLng([currentPos.lat, currentPos.lng]);
+                  parentMap.setView([currentPos.lat, currentPos.lng]);
+                }
+                if (policeMarker) {
+                  policeMarker.setLatLng([currentPos.lat, currentPos.lng]);
+                  policeMap.setView([currentPos.lat, currentPos.lng]);
                 }
                 const mapCoords = document.getElementById('map-coords');
                 if (mapCoords) mapCoords.textContent = `LAT ${currentPos.lat.toFixed(5)}° N · LON ${currentPos.lng.toFixed(5)}° E`;
@@ -710,31 +826,35 @@ const BlackBox = (() => {
 
     /* Maps Initialization */
     function initMaps() {
-      if (!window.L || !hasValidLocation) return;
+      if (!window.L) return;
       if (riderMap) return; // already init
 
+      const defaultPos = { lat: 28.6139, lng: 77.2090 };
+      const startLat = hasValidLocation ? currentPos.lat : defaultPos.lat;
+      const startLng = hasValidLocation ? currentPos.lng : defaultPos.lng;
+
       const mapOptions = { zoomControl: true, attributionControl: false };
-      const tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+      const tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 
       const mapDiv = document.getElementById('map');
       if (mapDiv) {
-        riderMap = L.map('map', mapOptions).setView([currentPos.lat, currentPos.lng], 15);
+        riderMap = L.map('map', mapOptions).setView([startLat, startLng], 15);
         L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(riderMap);
-        riderMarker = L.marker([currentPos.lat, currentPos.lng]).addTo(riderMap);
+        riderMarker = L.marker([startLat, startLng]).addTo(riderMap);
       }
 
       const parentMapDiv = document.getElementById('parent-map');
       if (parentMapDiv) {
-        parentMap = L.map('parent-map', mapOptions).setView([currentPos.lat, currentPos.lng], 15);
+        parentMap = L.map('parent-map', mapOptions).setView([startLat, startLng], 15);
         L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(parentMap);
-        parentMarker = L.marker([currentPos.lat, currentPos.lng]).addTo(parentMap);
+        parentMarker = L.marker([startLat, startLng]).addTo(parentMap);
       }
 
       const policeMapDiv = document.getElementById('police-map');
       if (policeMapDiv) {
-        policeMap = L.map('police-map', mapOptions).setView([currentPos.lat, currentPos.lng], 15);
+        policeMap = L.map('police-map', mapOptions).setView([startLat, startLng], 15);
         L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(policeMap);
-        policeMarker = L.marker([currentPos.lat, currentPos.lng]).addTo(policeMap);
+        policeMarker = L.marker([startLat, startLng]).addTo(policeMap);
       }
     }
 
@@ -772,6 +892,7 @@ const BlackBox = (() => {
     drawRideChart();
     drawWeekChart();
     setLive();
+    initMaps();
   }
 
   return { setupDashboard };

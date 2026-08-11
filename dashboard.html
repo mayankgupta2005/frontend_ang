@@ -26,14 +26,15 @@
       </a>
 
       <div style="display:flex; align-items:center; gap:16px;">
+        <button id="tts-toggle" class="btn btn-ghost btn-sm" aria-label="Enable Voice Assistant" aria-pressed="false" style="color:var(--text-secondary); font-size: 1.2rem; padding: 4px; border-radius: 50%;">🔇</button>
         <span class="status-badge status-safe" id="system-status-badge">
           <span class="status-dot status-dot-green" id="system-status-dot"></span>
           <span id="system-status-text">System Armed · Safe</span>
         </span>
-        <select id="device-selector" class="form-input btn-sm" style="background:var(--bg); border-color:var(--border); width:auto; padding:4px 8px; font-size:0.875rem; color:var(--text); cursor:pointer;">
+        <select id="device-selector" class="form-input btn-sm" aria-label="Select Device" style="background:var(--bg); border-color:var(--border); width:auto; padding:4px 8px; font-size:0.875rem; color:var(--text); cursor:pointer;">
           <option value="">Loading devices...</option>
         </select>
-        <a href="#" id="logout-btn" class="btn btn-ghost btn-sm" style="color:var(--text-secondary);">Logout</a>
+        <a href="#" id="logout-btn" class="btn btn-ghost btn-sm" style="color:var(--text-secondary);" aria-label="Logout">Logout</a>
       </div>
     </div>
   </nav>
@@ -47,21 +48,26 @@
   <main class="dash-body">
 
     <!-- ============================================================
-         DASHBOARD ROLE TABS
+         DASHBOARD ROLE TABS (SEGMENTED CONTROL)
          ============================================================ -->
-    <div class="dash-tabs">
-      <button class="dash-tab active" data-tab="rider-view">
-        <span class="dash-tab-icon">🏍️</span> Rider Dashboard
-      </button>
-      <button class="dash-tab" data-tab="parent-view">
-        <span class="dash-tab-icon">👨‍👩‍👧</span> Parent & Family View
-      </button>
-      <button class="dash-tab" data-tab="police-view">
-        <span class="dash-tab-icon">🚓</span> Police & Investigation
-      </button>
-      <button class="dash-tab" data-tab="admin-view">
-        <span class="dash-tab-icon">⚙️</span> Admin Telemetry
-      </button>
+    <div class="view-switcher-container" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 24px;">
+      
+      <div class="segmented-control" role="tablist" aria-label="Dashboard Views">
+        <button class="segment-btn active dash-tab" data-tab="rider-view" role="tab" aria-selected="true" aria-label="Rider Dashboard">
+          <span class="dash-tab-icon">🏍️</span> Rider
+        </button>
+        <button class="segment-btn dash-tab" data-tab="parent-view" role="tab" aria-selected="false" aria-label="Parent and Family View">
+          <span class="dash-tab-icon">👨‍👩‍👧</span> Parent & Family
+        </button>
+      </div>
+
+      <div class="secondary-views">
+        <select id="secondary-view-select" class="form-input btn-sm secondary-view-select" aria-label="Secondary Views" style="background:var(--bg); border-color:var(--border); width:auto; padding:8px 12px; font-size:0.875rem; border-radius: 20px; cursor:pointer;">
+          <option value="">More Views...</option>
+          <option value="police-view">🚓 Police & Investigation</option>
+          <option value="admin-view">⚙️ Admin Telemetry</option>
+        </select>
+      </div>
     </div>
 
     <!-- ============================================================
@@ -108,28 +114,28 @@
           <div class="stat-card-icon" style="background:#e8f4fc; color:var(--primary);">🚴</div>
           <div class="stat-card-info">
             <div class="stat-card-label">Speed</div>
-            <div class="stat-card-value">0</div>
+            <div class="stat-card-value skeleton" id="live-speed">0</div>
           </div>
         </div>
         <div class="card stat-card">
           <div class="stat-card-icon" style="background:#fce8ea; color:var(--emergency);">📍</div>
           <div class="stat-card-info">
             <div class="stat-card-label">GPS</div>
-            <div class="stat-card-value">Locked</div>
+            <div class="stat-card-value skeleton" id="live-gps">Locked</div>
           </div>
         </div>
         <div class="card stat-card">
           <div class="stat-card-icon" style="background:#e8f0fc; color:var(--primary);">📶</div>
           <div class="stat-card-info">
             <div class="stat-card-label">Network</div>
-            <div class="stat-card-value">Strong</div>
+            <div class="stat-card-value skeleton" id="live-network">Strong</div>
           </div>
         </div>
         <div class="card stat-card">
           <div class="stat-card-icon" style="background:#e8fceb; color:var(--accent);">🔋</div>
           <div class="stat-card-info">
             <div class="stat-card-label">Battery</div>
-            <div class="stat-card-value">87%</div>
+            <div class="stat-card-value skeleton" id="batt-val">87%</div>
           </div>
         </div>
       </div>
@@ -142,8 +148,8 @@
             <span class="card-title">LIVE GPS TRACKING</span>
             <span class="status-badge status-online" style="background:transparent; border:none; padding:0; font-size:0.75rem;">● Active Session</span>
           </div>
-          <div class="map-container" style="height: 500px; margin-top: 12px;">
-            <div id="map"></div>
+          <div class="map-container" style="height: 500px; margin-top: 12px; position: relative;">
+            <div id="map" style="width: 100%; height: 100%; border-radius: 12px;"></div>
             <div class="map-overlay-info" id="map-coords" style="bottom: 12px; left: 12px; right: auto;">
               LAT 29.3909° N · LON 76.9635° E · Accuracy ±2.1m
             </div>
@@ -309,31 +315,7 @@
           </div>
         </div>
 
-        <!-- BLACK BOX RECORDER -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title" style="display:flex; align-items:center; gap:8px;">
-              <span style="display:inline-block; width:10px; height:10px; background:var(--primary); border-radius:2px;"></span> DEVICE CONTROLS
-            </span>
-            <span id="cmd-status-badge" style="font-size:0.7rem; color:var(--text-muted);">● Ready</span>
-          </div>
 
-          <div id="command-feedback" style="margin-top:12px; font-size:0.8rem; padding:8px; border-radius:4px; display:none; background:var(--bg); border:1px solid var(--border-light);"></div>
-
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:16px;">
-            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="buzzer_on">Buzzer ON</button>
-            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="buzzer_off">Buzzer OFF</button>
-            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="led_red">LED Red</button>
-            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="led_green">LED Green</button>
-            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="led_off">LED OFF</button>
-            <button class="btn btn-outline btn-sm cmd-btn" data-cmd="upload_snapshot">Snapshot</button>
-          </div>
-
-          <div style="display:flex; flex-direction:column; gap:8px; margin-top:16px;">
-            <button class="btn btn-emergency btn-sm cmd-btn" data-cmd="sos_on" style="justify-content:center;">🚨 Trigger SOS Alarm</button>
-            <button class="btn btn-secondary btn-sm cmd-btn" data-cmd="sos_off" style="justify-content:center;">Stop SOS Alarm</button>
-          </div>
-        </div>
 
       </div>
     </div>
@@ -361,8 +343,8 @@
               <span class="card-title">Live Rider Location</span>
               <span class="status-badge status-online">● GPS Live Sync</span>
             </div>
-            <div class="map-container" style="min-height:350px;">
-              <div id="parent-map" style="width:100%;height:100%;position:absolute;"></div>
+            <div class="map-container" style="height: 500px; margin-top: 12px; position: relative;">
+              <div id="parent-map" style="width: 100%; height: 100%; border-radius: 12px;"></div>
             </div>
 
             <div class="action-buttons" style="margin-top:20px;">
@@ -405,41 +387,7 @@
             </div>
           </div>
 
-          <!-- Timeline -->
-          <div class="card" style="margin-top:20px;">
-            <span class="card-title" style="margin-bottom:16px; display:block;">Incident & Rescue Timeline</span>
 
-            <div class="timeline">
-              <div class="timeline-item">
-                <div class="timeline-dot completed"></div>
-                <div class="timeline-content">
-                  <h4>Ride Started</h4>
-                  <p>14:00:12 · Origin Sector 4</p>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <div class="timeline-dot pending" id="tl-crash-dot"></div>
-                <div class="timeline-content">
-                  <h4>Accident Detected</h4>
-                  <p id="tl-crash-text">No crash detected</p>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <div class="timeline-dot pending" id="tl-sos-dot"></div>
-                <div class="timeline-content">
-                  <h4>SOS Alert Dispatched</h4>
-                  <p id="tl-sos-text">Standby</p>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <div class="timeline-dot pending" id="tl-amb-dot"></div>
-                <div class="timeline-content">
-                  <h4>Ambulance & Hospital Assigned</h4>
-                  <p id="tl-amb-text">Standby</p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
       </div>
@@ -703,6 +651,10 @@
       </button>
     </div>
   </div>
+
+  <!-- ARIA Live Regions for Screen Readers -->
+  <div id="aria-live-polite" aria-live="polite" class="sr-only"></div>
+  <div id="aria-live-assertive" aria-live="assertive" class="sr-only"></div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
