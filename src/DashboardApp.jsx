@@ -45,7 +45,7 @@ function DashboardShell() {
     <div className="min-h-screen flex flex-col relative pb-12">
       {/* Top Navbar */}
       <nav className="border-b border-white/10 bg-background/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           
           <a href="index.html" className="flex items-center gap-3">
             <div className="w-8 h-8 rounded bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.3)]">N</div>
@@ -105,7 +105,7 @@ function DashboardShell() {
       <AccidentBanner />
 
       {/* Main Dashboard Body */}
-      <main className="w-full px-4 sm:px-6 lg:px-8 py-8 flex-1 relative z-10">
+      <main className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 relative z-10">
         
         <ViewSwitcher currentView={currentView} setCurrentView={handleViewChange} />
 

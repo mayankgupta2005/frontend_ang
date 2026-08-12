@@ -18,10 +18,10 @@ export function RiderView() {
     <div className="space-y-6 animate-in fade-in duration-300">
       
       {/* 4 Stat Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         
         {/* Speed */}
-        <div className="glass-panel p-4 flex items-center gap-4">
+        <div className="glass-panel p-6 flex items-center gap-5">
           <div className="bg-blue-900/50 text-primary w-12 h-12 rounded-full flex items-center justify-center text-xl">🚴</div>
           <div>
             <div className="text-sm text-gray-400 font-semibold">Speed</div>
@@ -36,7 +36,7 @@ export function RiderView() {
         </div>
 
         {/* GPS */}
-        <div className="glass-panel p-4 flex items-center gap-4">
+        <div className="glass-panel p-6 flex items-center gap-5">
           <div className="bg-red-900/50 text-emergency w-12 h-12 rounded-full flex items-center justify-center text-xl">📍</div>
           <div>
             <div className="text-sm text-gray-400 font-semibold">GPS</div>
@@ -50,7 +50,7 @@ export function RiderView() {
         </div>
 
         {/* Battery */}
-        <div className="glass-panel p-4 flex items-center gap-4">
+        <div className="glass-panel p-6 flex items-center gap-5">
           <div className="bg-green-900/50 text-safe w-12 h-12 rounded-full flex items-center justify-center text-xl">🔋</div>
           <div>
             <div className="text-sm text-gray-400 font-semibold">Battery</div>
@@ -64,7 +64,7 @@ export function RiderView() {
         </div>
         
         {/* Network */}
-        <div className="glass-panel p-4 flex items-center gap-4">
+        <div className="glass-panel p-6 flex items-center gap-5">
           <div className="bg-blue-900/50 text-primary w-12 h-12 rounded-full flex items-center justify-center text-xl">📶</div>
           <div>
             <div className="text-sm text-gray-400 font-semibold">Network</div>
