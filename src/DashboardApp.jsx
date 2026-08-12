@@ -87,7 +87,16 @@ function DashboardShell() {
               </button>
             </div>
 
-            <a href="login.html" className="text-sm text-gray-400 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">Logout</a>
+            <div className="flex items-center gap-3 border-l border-white/10 pl-4 sm:pl-6">
+              <div className="hidden md:block text-right">
+                <div className="text-sm font-bold text-white">{localStorage.getItem('ns_user_name') || 'Rider'}</div>
+                <div className="text-[10px] text-primary font-mono uppercase tracking-wider">{userRole}</div>
+              </div>
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-[0_0_10px_rgba(0,240,255,0.2)]">
+                {(localStorage.getItem('ns_user_name') || 'R').charAt(0).toUpperCase()}
+              </div>
+              <a href="login.html" className="ml-2 text-xs text-gray-400 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">Logout</a>
+            </div>
           </div>
         </div>
       </nav>
