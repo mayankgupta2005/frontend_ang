@@ -4,6 +4,7 @@ import { useTTS } from './hooks/useTTS';
 
 import { ViewSwitcher } from './components/ViewSwitcher';
 import { AccidentBanner } from './components/AccidentBanner';
+import { AddDeviceModal } from './components/AddDeviceModal';
 
 import { RiderView } from './views/RiderView';
 import { ParentView } from './views/ParentView';
@@ -13,6 +14,7 @@ import { AdminView } from './views/AdminView';
 function DashboardShell() {
   const { device, connectionStatus, userRole } = useNova();
   const { ttsEnabled, toggleTTS } = useTTS();
+  const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
   const [currentView, setCurrentView] = useState(() => {
     const saved = localStorage.getItem('novashield_last_view');
     if (saved && isViewAllowed(saved, userRole)) return saved;
@@ -73,8 +75,16 @@ function DashboardShell() {
               </span>
             </div>
 
-            <div className="text-sm font-medium text-gray-300 border-l border-white/10 pl-4 sm:pl-6 hidden sm:block">
-              {device ? device.name : 'Loading...'}
+            <div className="flex items-center gap-3 border-l border-white/10 pl-4 sm:pl-6 hidden sm:flex">
+              <div className="text-sm font-medium text-gray-300">
+                {device ? device.name : 'No device linked'}
+              </div>
+              <button 
+                onClick={() => setIsAddDeviceOpen(true)}
+                className="text-xs font-bold bg-primary/20 hover:bg-primary/30 text-primary px-3 py-1.5 rounded-full border border-primary/30 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+              >
+                + Add Device
+              </button>
             </div>
 
             <a href="login.html" className="text-sm text-gray-400 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">Logout</a>
@@ -111,6 +121,11 @@ function DashboardShell() {
 
       {/* Ambient background glow */}
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-primary/5 rounded-full blur-[120px] pointer-events-none z-0"></div>
+
+      <AddDeviceModal 
+        isOpen={isAddDeviceOpen} 
+        onClose={() => setIsAddDeviceOpen(false)} 
+      />
     </div>
   );
 }

@@ -96,34 +96,35 @@ export function NovaProvider({ children }) {
     };
   }, [device]);
 
-  // Load devices on mount
-  useEffect(() => {
-    const fetchDevices = async () => {
-      try {
-        // Mocking device load, replace with real API call using getAuthHeaders()
-        const res = await fetch(`${WS_BASE_URL.replace('ws', 'http')}/api/devices`, {
-          headers: getAuthHeaders()
-        });
-        if (handleUnauthorized(res)) return;
-        if (res.ok) {
-          const data = await res.json();
-          setDevices(data);
-          if (data.length > 0) setDevice(data[0]);
-        } else {
-          // Fallback mock device for dev
-          const mockDevice = { id: 'test_dev_001', name: 'Rider 1 (Test)' };
-          setDevices([mockDevice]);
-          setDevice(mockDevice);
-        }
-      } catch (e) {
-        console.warn("Failed to fetch devices, using mock");
+  const fetchDevices = useCallback(async () => {
+    try {
+      // API call using getAuthHeaders()
+      const res = await fetch(`${WS_BASE_URL.replace('ws', 'http')}/api/devices`, {
+        headers: getAuthHeaders()
+      });
+      if (handleUnauthorized(res)) return;
+      if (res.ok) {
+        const data = await res.json();
+        setDevices(data);
+        if (data.length > 0) setDevice(data[0]);
+      } else {
+        // Fallback mock device for dev
         const mockDevice = { id: 'test_dev_001', name: 'Rider 1 (Test)' };
         setDevices([mockDevice]);
         setDevice(mockDevice);
       }
-    };
-    fetchDevices();
+    } catch (e) {
+      console.warn("Failed to fetch devices, using mock");
+      const mockDevice = { id: 'test_dev_001', name: 'Rider 1 (Test)' };
+      setDevices([mockDevice]);
+      setDevice(mockDevice);
+    }
   }, []);
+
+  // Load devices on mount
+  useEffect(() => {
+    fetchDevices();
+  }, [fetchDevices]);
 
   // API Call helper for commands (e.g. SOS, Buzzer)
   const sendCommand = useCallback(async (command, payload = {}) => {
@@ -150,7 +151,8 @@ export function NovaProvider({ children }) {
       accidentState, setAccidentState,
       cameraMetadata, setCameraMetadata,
       sendCommand,
-      userRole
+      userRole,
+      loadDevices: fetchDevices
     }}>
       {children}
     </NovaContext.Provider>
